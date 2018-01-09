@@ -16,7 +16,7 @@ show_fps 0 // Draw frames per second in the corner
 
 // :: Window Settings
 
-windowed 0 // 1 to start up in windowed mode
+windowed 1 // 1 to start up in windowed mode
 window_position -1 -1 // x and y position of window, or -1, -1 to let the window manager decide
 frameless 0 // 1 to use a window with no frame
 fullscreen_method 1 // 0 maximized window (linux)  1 borderless desktop-sized window  2 fullscreen
@@ -28,7 +28,7 @@ foreground_sleep_ms 5 // number of milliseconds to sleep each frame. Try 10 to c
 
 background_sleep_ms 20 // number of milliseconds to sleep each frame when running in the background
 
-sessions 1 // number of times program has been run
+sessions 3 // number of times program has been run
 
 // (scancode) hold this key down and left-click to simulate right-click
 rmb_key 0 // 0 for none  226 for LALT
@@ -54,11 +54,11 @@ version 0.1.11f
 
 
 // Location of pico-8's root folder
-root_path C:/Users/mcraig/AppData/Roaming/pico-8/carts/
+root_path carts/
 
 
 // Location of cartridge save data
-cdata_path C:/Users/mcraig/AppData/Roaming/pico-8/cdata/
+cdata_path cdata/
 
 
 // Specify which player index joystick control begins at (0..7)

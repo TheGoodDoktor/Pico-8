@@ -5,14 +5,14 @@ codo_init
     01 window_size 0 0 // window width, height
     02 screen_size 0 0 // screen width, height (stretched to window) 
     03 show_fps 0 // Draw frames per second in the corner
-    04 windowed 0 // 1 to start up in windowed mode
+    04 windowed 1 // 1 to start up in windowed mode
     05 window_position -1 -1 // x and y position of window, or -1, -1 to let the window manager decide
     new window position: -1, -1
     06 frameless 0 // 1 to use a window with no frame
     07 fullscreen_method 1 // 0 maximized window (linux)  1 borderless desktop-sized window  2 fullscreen
     08 foreground_sleep_ms 5 // number of milliseconds to sleep each frame. Try 10 to conserve battery power
     09 background_sleep_ms 20 // number of milliseconds to sleep each frame when running in the background
-    10 sessions 1 // number of times program has been run
+    10 sessions 3 // number of times program has been run
     11 rmb_key 0 // 0 for none  226 for LALT
     12 emulate_textinput 0 
     13 desktop_path 
@@ -20,8 +20,8 @@ codo_init
     15 music_volume 256 // 0..256
     16 mix_buffer_size 1024 // usually 1024. Try 2048 if you get choppy sound
     17 version 0.1.11f
-    18 root_path C:/Users/mcraig/AppData/Roaming/pico-8/carts/
-    19 cdata_path C:/Users/mcraig/AppData/Roaming/pico-8/cdata/
+    18 root_path carts/
+    19 cdata_path cdata/
     20 joystick_index 0
     21 button_keys 0 0 0 0 0 0 0 0 0 0 0 0 0 
     22 live_notes 0
@@ -59,7 +59,7 @@ codo_init
   codo_video_init
   codo_mouse_init
   codo_joystick_init
-  Reading controller mappings: C:/Users/mcraig/AppData/Roaming/pico-8/sdl_controllers.txt
+  Reading controller mappings: D:/Dev/Pico-8/sdl_controllers.txt
   searching for joysticks
     found 0 joysticks
   ok
@@ -79,5 +79,3 @@ SDL_INIT_AUDIO ok
 SDL_OpenAudio ok
 Built-in audio drivers: 0 xaudio2 1 directsound 2 winmm 3 disk 4 dummy
 Current audio driver: xaudio2
-saving screenshot to: C:/Users/mcraig/Desktop/PICO-8_000.png
-Current renderer:
