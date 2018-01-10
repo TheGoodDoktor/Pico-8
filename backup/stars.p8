@@ -103,6 +103,14 @@ end
 function _draw()
 	cls()
 	
+	-- stars
+	for s in all(stars) do
+		local col = s.cols[flr(s.z / (z_range/4))+1]
+		local scr_x,scr_y = project(s.x,s.y,s.z)
+		--pset(scr_x,scr_y,col)
+		circfill(scr_x,scr_y,256 / s.z)
+	end	
+	
 	-- lines
 	for l in all(lines) do
 		local col = l.cols[flr(l.z / (z_range/4))+1]
@@ -110,12 +118,5 @@ function _draw()
 		local x2,y2 = project(l.x,l.y,l.z+line_speed) 
 		line(x1,y1,x2,y2,col)
 	end
-	
-	-- stars
-	for s in all(stars) do
-		local col = s.cols[flr(s.z / (z_range/4))+1]
-		local scr_x,scr_y = project(s.x,s.y,s.z)
-		circfill(scr_x,scr_y,256 / s.z,col)
-	end	
-	
+
 end
