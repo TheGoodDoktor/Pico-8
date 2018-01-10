@@ -28,7 +28,7 @@ foreground_sleep_ms 5 // number of milliseconds to sleep each frame. Try 10 to c
 
 background_sleep_ms 20 // number of milliseconds to sleep each frame when running in the background
 
-sessions 3 // number of times program has been run
+sessions 4 // number of times program has been run
 
 // (scancode) hold this key down and left-click to simulate right-click
 rmb_key 0 // 0 for none  226 for LALT
@@ -54,11 +54,11 @@ version 0.1.11f
 
 
 // Location of pico-8's root folder
-root_path carts/
+root_path D:/Dev/Pico-8/carts/
 
 
 // Location of cartridge save data
-cdata_path cdata/
+cdata_path D:/Dev/Pico-8/cdata/
 
 
 // Specify which player index joystick control begins at (0..7)
