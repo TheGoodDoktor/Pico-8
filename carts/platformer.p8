@@ -27,6 +27,8 @@ function make_actor(x, y)
  a.frames=2
  a.solid = false
  a.grounded = false
+ a.in_water = false
+ a.on_surface = false
  a.gravity = false
  a.alive = true
  a.death_timer = 0
@@ -259,10 +261,25 @@ function move_solid_actor(a)
   --a.dy *= -a.bounce
  end
  
- -- gravity 
- if a.gravity == true then
-  grav = 0.05
-  a.dy += grav
+ -- check for water
+ local player_tile = mget(a.x,a.y);
+ if fget(player_tile,4) then
+  player_tile = mget(a.x,a.y - (1.0/8));
+  if fget(player_tile,4) == false then
+   a.on_surface = true
+  else
+   a.dy -= 0.02
+   a.on_surface = false
+  end
+  a.in_water = true
+ else
+  a.in_water = false
+  a.on_surface = false
+  -- gravity 
+  if a.gravity == true then
+   grav = 0.05
+   a.dy += grav
+  end
  end
  -- apply inertia
  a.dx *= a.inertia
@@ -384,7 +401,11 @@ end
 function update_player(pl)
 
  -- how fast to accelerate
- accel = 0.1
+ if pl.in_water == true then 
+  accel = 0.05
+ else
+  accel = 0.1
+ end
  
  -- controls
  if pl.alive == true then
@@ -394,7 +415,7 @@ function update_player(pl)
 
   -- jump controls
   if (btn(2)) then
-   if pl.grounded == true then
+   if pl.grounded == true or pl.on_surface == true then
     pl.dy -= 0.50
     pl.jump_timer = 0
     pl.grounded = false
@@ -404,6 +425,12 @@ function update_player(pl)
    if pl.jump_timer < 10 then
     pl.dy -= 0.1
    end
+  end
+  
+  -- swim down
+  if pl.in_water == true then
+   if btn(3) then pl.dy += 0.05 end
+   if btn(2) then pl.dy -= 0.05 end
   end
  end
  
