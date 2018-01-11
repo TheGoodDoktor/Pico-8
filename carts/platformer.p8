@@ -27,6 +27,7 @@ function make_actor(x, y)
  a.frames=2
  a.solid = false
  a.grounded = false
+ a.gravity = false
  a.alive = true
  a.death_timer = 0
  -- half-width and half-height
@@ -41,29 +42,8 @@ function make_actor(x, y)
  return a
 end
 
-function create_player(x,y)
- pl = make_actor(x,y)
- pl.spr = 17
- pl.restart_x = x
- pl.restart_y = y
- pl.jump_timer = 0
- pl.update = move_platform_actor
- pl.solid = true
- pl.pickups = 0
- return pl
-end
-
-function restart_player()
- pl.x = pl.restart_x
- pl.y = pl.restart_y
- pl.dx = 0
- pl.dy = 0
- pl.alive = true
-end
-
 -- actor creation table - is indexed by tile type
 actor_create={}
-actor_create[17] = create_player
 
 -- animated tiles
 anim_tiles={}
@@ -100,9 +80,7 @@ function setup_map()
 end
 
 function _init()
- -- make player top left
- --pl = create_player(2,2)
- 
+  
  setup_map()
  
  -- make a bouncy ball
@@ -159,8 +137,7 @@ function check_pickup(x,y)
  
 end
 
-
--- true if a will hit another
+-- true if a we hit another
 -- solid actor after moving dx,dy
 function solid_actor(a, dx, dy)
 
@@ -189,8 +166,6 @@ function solid_actor(a, dx, dy)
      a2.dy=v/2
      return true 
     end
-    
-    --return true
     
    end
   end
@@ -225,17 +200,32 @@ function solid_a(a, dx, dy)
  return solid_actor(a, dx, dy) 
 end
 
--- move actor with gravity
-function move_platform_actor(a)
+-- check for death from environment & other actors
+function actor_check_death(a)
+ 
+ local death = false
+ local overlap = overlapping_actor(a)
+ if overlap != nil then
+ end
+ if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, 2) then death = true end
+ 
+ if death == true and a.alive == true then 
+  --kill actor
+  a.alive = false
+  a.death_timer = 100
+  a.dy -= 2
+ end
+end
 
- -- only move actor along x
- -- if the resulting position
- -- will not overlap with a wall
+-- move actor with collision & gravity
+function move_solid_actor(a)
 
+  -- apply x vel first
  if not solid_a(a, a.dx, 0) then
-  a.x += a.dx
+  a.x += a.dx -- no collision, we're good to move
  else   
-  if a.dx > 0 then step = 0.1 else step = -0.1 end
+  local step = sgn(a.dx) * (1.0/8.0) -- single pixel step
+  --if a.dx > 0 then step = 0.1 else step = -0.1 end
   
   while not solid_a(a, step, 0) do
    a.x += step
@@ -247,7 +237,7 @@ function move_platform_actor(a)
   end
  end
 
- -- ditto for y
+ -- then apply y velocity
  if a.alive==false or not solid_a(a, 0, a.dy) then
   a.y += a.dy
   a.grounded = false
@@ -269,33 +259,16 @@ function move_platform_actor(a)
   --a.dy *= -a.bounce
  end
  
- -- check for death - todo: chek for killer actors
- local death = false
- local overlap = overlapping_actor(a)
- if overlap != nil then
+ -- gravity 
+ if a.gravity == true then
+  grav = 0.05
+  a.dy += grav
  end
- if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, 2) then death = true end
- 
- if death == true and a.alive == true then 
-  --kill actor
-  a.alive = false
-  a.death_timer = 100
-  a.dy -= 2
- end
- 
- 
- 
  -- apply inertia
- -- set dx,dy to zero if you
- -- don't want inertia
- 
  a.dx *= a.inertia
  a.dy *= a.inertia
  
- -- advance one frame every
- -- time actor moves 1/4 of
- -- a tile
- 
+ -- update animation
  a.frame += abs(a.dx) * 4
  a.frame += abs(a.dy) * 4
  a.frame %= a.frames
@@ -304,70 +277,9 @@ function move_platform_actor(a)
  
 end
 
-function control_player(pl)
-
- -- how fast to accelerate
- accel = 0.1
- if (btn(0)) pl.dx -= accel 
- if (btn(1)) pl.dx += accel 
-
- if (btn(2)) then
-	if pl.grounded == true then
-		pl.dy -= 0.50
-		pl.jump_timer = 0
-		pl.grounded = false
-	end 
-	
-	if pl.jump_timer < 10 then
-		pl.dy -= 0.1
-	end
- end
- 
- if (pl.grounded == false) pl.jump_timer+=1
- 
- --if (btn(3)) pl.dy += accel 
- 
- grav = 0.05
- pl.dy += grav
-
- -- play a sound if moving
- -- (every 4 ticks)
- 
- if (abs(pl.dx)+abs(pl.dy) > 0.1
-     and (pl.t%4) == 0) and pl.grounded == true then
-  sfx(1)
- end
- 
- -- check for pickups
- local pickup = check_pickup(pl.x, pl.y)
- if pickup != nill then
-  pl.pickups += 1
-  -- TODO: sfx
- end
- 
- -- death state
- if pl.alive == false then
-  pl.death_timer -= 1
-  if pl.death_timer < 0 then
-	restart_player()
-  end
- end
- 
-end
-
--- call actor's update function
-function update_actor(actor)
-	if actor.update != nil then
-		actor.update(actor)
-	end	
-end
-
-function _update()
- control_player(pl)
- foreach(actors, update_actor)
- 
+function update_map()
  -- update map offset around player
- if pl.alive == true then
+ if pl != nil and pl.alive == true then
   map_off_x += ((pl.x - 8) - map_off_x) * 0.4
   if map_off_x < 0 then map_off_x = 0 end
   if map_off_x > 120 then map_off_x = 120 end
@@ -386,6 +298,20 @@ function _update()
 		mset(t[1],t[2],frame)
 	end
  end
+end
+
+-- call actor's update function
+function update_actor(actor)
+	if actor.update != nil then
+		actor.update(actor)
+	end	
+end
+
+-- update game
+function _update()
+ foreach(actors, update_actor)
+ 
+ update_map()
  
  global_tick += 1	-- global timer
 end
@@ -393,25 +319,127 @@ end
 function draw_actor(a)
  local sx = ((a.x - map_off_x) * 8) - 4
  local sy = ((a.y - map_off_y) * 8) - 4
- local flip_x = false
+ local flip_x = false	-- todo: flip left/right based on vel
  local flip_y = false
+ 
+ -- flip actor on death - player only?
  if a.alive == false and a.dy > 0 then flip_y = true end
  spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
 end
 
 function _draw()
  cls()
+ 
+ -- map
  local mscrx = (map_off_x - flr(map_off_x)) * 8
  local mscry = (map_off_y - flr(map_off_y)) * 8
- map(map_off_x,map_off_y,-mscrx,-mscry,16,16)
+ map(map_off_x,map_off_y,-mscrx,-mscry,17,17)
+ 
+ -- actors
  foreach(actors,draw_actor)
  
- print("x "..pl.x,0,120,7)
- print("y "..pl.y,64,120,7)
+ -- player debug
+ if pl == nil then
+  print("no player",0,120)
+ else
+  print("x "..pl.x,0,120,7)
+  print("y "..pl.y,64,120,7)
  
- if pl.grounded == true then print("g",100,120,7) end
- if pl.alive == true then  print("a",108,120,7) end
+  -- player states
+  if pl.grounded == true then print("g",100,120,7) end
+  if pl.alive == true then  print("a",108,120,7) end
+ end
 end
+
+-->8
+
+-- Individual actor code here
+
+-- Player code
+
+function create_player(x,y)
+ pl = make_actor(x,y)
+ pl.spr = 17
+ pl.restart_x = x
+ pl.restart_y = y
+ pl.jump_timer = 0
+ pl.update = update_player
+ pl.solid = true
+ pl.gravity = true
+ pl.pickups = 0
+ return pl
+end
+
+-- register with factory
+actor_create[17] = create_player
+
+function restart_player()
+ pl.x = pl.restart_x
+ pl.y = pl.restart_y
+ pl.dx = 0
+ pl.dy = 0
+ pl.alive = true
+end
+
+function update_player(pl)
+
+ -- how fast to accelerate
+ accel = 0.1
+ 
+ -- controls
+ if pl.alive == true then
+  -- left/right movement
+  if (btn(0)) pl.dx -= accel 
+  if (btn(1)) pl.dx += accel 
+
+  -- jump controls
+  if (btn(2)) then
+   if pl.grounded == true then
+    pl.dy -= 0.50
+    pl.jump_timer = 0
+    pl.grounded = false
+   end 
+	
+   -- allow additional jump boost early on in the jump
+   if pl.jump_timer < 10 then
+    pl.dy -= 0.1
+   end
+  end
+ end
+ 
+ -- update jump timer
+ if (pl.grounded == false) pl.jump_timer+=1
+ 
+ 
+
+ -- play a sound if moving
+ -- (every 4 ticks)
+ if (abs(pl.dx)+abs(pl.dy) > 0.1
+     and (pl.t%4) == 0) and pl.grounded == true then
+  sfx(1)
+ end
+ 
+ -- check for pickups
+ local pickup = check_pickup(pl.x, pl.y)
+ if pickup != nill then
+  pl.pickups += 1
+  -- todo: sfx
+ end
+ 
+ actor_check_death(pl)
+ 
+ -- death state
+ if pl.alive == false then
+  pl.death_timer -= 1
+  if pl.death_timer < 0 then
+	restart_player()
+  end
+ end
+ 
+ move_solid_actor(pl)
+ 
+end
+
 
 __gfx__
 000000003bbbbbb7dccccc770cccccc00000000000ccc70000ccc70000ccc70000ccc70000880008080080000600060000000000000000000000000000000000
