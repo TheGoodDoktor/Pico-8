@@ -2,6 +2,16 @@ pico-8 cartridge // http://www.pico-8.com
 version 15
 __lua__
 
+
+-- constants
+k_grav = 0.1 -- gravitation accel
+k_buoyancy = 0.02
+
+k_sprflg_solid = 1
+k_sprflg_death = 2
+k_sprflg_pickup = 3
+k_sprflg_water = 4  
+
 -- map scroll values
 map_off_x = 0
 map_off_y = 0
@@ -132,7 +142,7 @@ end
 function check_pickup(x,y)
 
  local tile = mget(x,y)
- if fget(tile, 3) then
+ if fget(tile, k_sprflg_pickup) then
 	mset(x,y, background_tile)
 	return tile
  end
@@ -196,7 +206,7 @@ end
 -- checks both walls and actors
 function solid_a(a, dx, dy)
  -- 1 is the solid flag
- if check_map_area(a.x+dx,a.y+dy,a.w,a.h,1) then
+ if check_map_area(a.x+dx,a.y+dy,a.w,a.h,k_sprflg_solid) then
     return true 
  end
  return solid_actor(a, dx, dy) 
@@ -209,7 +219,7 @@ function actor_check_death(a)
  local overlap = overlapping_actor(a)
  if overlap != nil then
  end
- if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, 2) then death = true end
+ if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, k_sprflg_death) then death = true end
  
  if death == true and a.alive == true then 
   --kill actor
@@ -263,13 +273,20 @@ function move_solid_actor(a)
  
  -- check for water
  local player_tile = mget(a.x,a.y);
- if fget(player_tile,4) then
+ if fget(player_tile, k_sprflg_water) then
   player_tile = mget(a.x,a.y - (1.0/8));
-  if fget(player_tile,4) == false then
+  if fget(player_tile, k_sprflg_water) == false then
    a.on_surface = true
+   -- surface splash
+   if abs(a.dx) > 0 and (a.t % 4) == 0 then 
+    spawn_splash(a.x,a.y,abs(a.dx * 0.5))
+   end
   else
-   a.dy -= 0.02
+   a.dy -= k_buoyancy
    a.on_surface = false
+  end
+  if a.in_water == false then
+   spawn_splash(a.x,a.y,a.dy * 2)
   end
   a.in_water = true
  else
@@ -277,8 +294,7 @@ function move_solid_actor(a)
   a.on_surface = false
   -- gravity 
   if a.gravity == true then
-   grav = 0.05
-   a.dy += grav
+   a.dy += k_grav
   end
  end
  -- apply inertia
@@ -329,6 +345,7 @@ function _update()
  foreach(actors, update_actor)
  
  update_map()
+ update_particles()
  
  global_tick += 1	-- global timer
 end
@@ -354,6 +371,8 @@ function _draw()
  
  -- actors
  foreach(actors,draw_actor)
+ 
+ render_particles()
  
  -- player debug
  if pl == nil then
@@ -419,6 +438,9 @@ function update_player(pl)
     pl.dy -= 0.50
     pl.jump_timer = 0
     pl.grounded = false
+    if pl.on_surface == true then
+    	spawn_splash(pl.x,pl.y,0.5)
+    end
    end 
 	
    -- allow additional jump boost early on in the jump
@@ -466,6 +488,62 @@ function update_player(pl)
 end
 
 
+-->8
+-- particle system
+
+particles = {}
+
+function add_particle()
+	part = {}
+	part.x = 0
+	part.y = 0
+	part.dx = 0
+	part.dy = 0
+	part.grav = false
+	part.life = 0
+	part.col = 0
+		
+	add(particles,part)
+	return part
+end
+
+function update_particles()
+ for p in all(particles) do
+ 
+  p.x += p.dx
+  p.y += p.dy
+  
+  if p.grav == true then p.dy += k_grav end
+  p.life-=1
+  if p.life < 0 then del(particles,p) end -- dead particle
+ end
+end
+
+function render_particles()
+ for p in all(particles) do
+  local sx = ((p.x - map_off_x) * 8) 
+  local sy = ((p.y - map_off_y) * 8) 
+  pset(sx,sy,p.col)
+ end
+end
+
+function spawn_splash(x,y,scale)
+	local no_parts = 8
+	local xrange = 0.4 * scale
+	local dx = -xrange/2
+	
+	for i=1,no_parts do
+	 p = add_particle()
+	 p.life = 10
+	 p.x = x
+	 p.y = y
+	 p.dx = dx
+	 p.dy = -0.25 - rnd(scale) 
+	 p.grav = true
+	 p.col = 12
+	 dx += xrange / no_parts 
+	end
+end
 __gfx__
 000000003bbbbbb7dccccc770cccccc00000000000ccc70000ccc70000ccc70000ccc70000880008080080000600060000000000000000000000000000000000
 000000003000000bd0000077d000007c101110100cccccc00cccccc00cccccc00cccccc008888088088080800600060000000000000000000000000000000000
