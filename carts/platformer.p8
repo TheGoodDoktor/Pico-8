@@ -4,8 +4,9 @@ __lua__
 
 
 -- constants
+k_pixmap = 1.0 / 8.0 -- 1 pixel in map coords
 k_grav = 0.1 -- gravitation accel
-k_buoyancy = 0.02
+k_buoyancy = 0.002
 
 k_sprflg_solid = 1
 k_sprflg_death = 2
@@ -44,11 +45,8 @@ function create_actor(x, y)
  a.alive = true
  a.death_timer = 0
  -- half-width and half-height
- -- slightly less than 0.5 so
- -- that will fit through 1-wide
- -- holes.
- a.w = 0.4
- a.h = 0.4
+ a.w = 0.5
+ a.h = 0.5
  
  add(actors,a)
  
@@ -171,16 +169,16 @@ function solid_actor(a, dx, dy)
     -- overlap initially 
     -- without sticking together    
     if (dx != 0 and abs(x) < abs(a.x-a2.x)) then
-     v=a.dx + a2.dy
-     a.dx = v/2
-     a2.dx = v/2
+     --v=a.dx + a2.dy
+     --a.dx = v/2
+     --a2.dx = v/2
      return true 
     end
     
     if (dy != 0 and abs(y) < abs(a.y-a2.y)) then
-     v=a.dy + a2.dy
-     a.dy=v/2
-     a2.dy=v/2
+     --v=a.dy + a2.dy
+     --a.dy=v/2
+     --a2.dy=v/2
      return true 
     end
     
@@ -250,8 +248,12 @@ function actor_check_death(a)
  if check_map(a.x,a.y,k_sprflg_death) then death = true end
  --if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, k_sprflg_death) then death = true end
  
+ -- squashed?
+ if solid_a(a, 0, 0) then death = true end
+ 
  if death == true and a.alive == true then 
   --kill actor
+  spawn_sprite_explosion(a.spr,a.x - a.w,a.y - a.h)
   a.alive = false
   a.death_timer = 100
   a.dy -= 2
@@ -261,12 +263,17 @@ end
 -- move actor with collision & gravity
 function move_solid_actor(a)
 
-  -- apply x vel first
+ if a.platform != nil then
+  a.x += a.platform.dx
+  a.y += a.platform.dy
+  a.grounded = true
+ end
+ 
+ -- apply x vel first
  if not solid_a(a, a.dx, 0) then
   a.x += a.dx -- no collision, we're good to move
  else   
-  local step = sgn(a.dx) * (1.0/8.0) -- single pixel step
-  --if a.dx > 0 then step = 0.1 else step = -0.1 end
+  local step = sgn(a.dx) * k_pixmap -- single pixel step
   
   while not solid_a(a, step, 0) do
    a.x += step
@@ -283,21 +290,20 @@ function move_solid_actor(a)
   a.y += a.dy
   a.grounded = false
  else
-		-- landed?
+  -- landed?
   if a.dy > 0 and a.grounded == false then
-			a.grounded = true
-			sfx(2)
+   a.grounded = true
+   sfx(2)
   end
   
-  if a.dy > 0 then step = 0.1 else step = -0.1 end
+  local step = sgn(a.dy) * k_pixmap -- single pixel step
   
   while not solid_a(a, 0, step) do
    a.y += step
   end
   
   a.dy = 0
-  
-  --a.dy *= -a.bounce
+  a.jump_timer = 0
  end
  
  -- check for water
@@ -306,6 +312,7 @@ function move_solid_actor(a)
   player_tile = mget(a.x,a.y - (1.0/8));
   if fget(player_tile, k_sprflg_water) == false then
    a.on_surface = true
+   a.dy = 0
    -- surface splash
    if abs(a.dx) > 0 and (a.t % 4) == 0 then 
     spawn_splash(a.x,a.y,abs(a.dx * 0.5))
@@ -316,6 +323,7 @@ function move_solid_actor(a)
   end
   if a.in_water == false then
    spawn_splash(a.x,a.y,a.dy * 2)
+   a.dy *= 0.2
   end
   a.in_water = true
  else
@@ -326,14 +334,11 @@ function move_solid_actor(a)
    a.dy += k_grav
   end
  end
- -- apply velocity damper
- a.dx *= a.vel_damp
- a.dy *= a.vel_damp
  
  -- update animation
- a.frame += abs(a.dx) * 4
- a.frame += abs(a.dy) * 4
- a.frame %= a.frames
+ --a.frame += abs(a.dx) * 4
+ --a.frame += abs(a.dy) * 4
+ --a.frame %= a.frames
 
  a.t += 1
  
@@ -371,6 +376,8 @@ end
 
 -- update game
 function _update()
+
+ update_platforms() -- update platforms first
  foreach(actors, update_actor)
  
  update_map()
@@ -384,6 +391,8 @@ function draw_actor(a)
  local sy = ((a.y - map_off_y) * 8) - 4
  local flip_x = false	-- todo: flip left/right based on vel
  local flip_y = false
+ 
+ if(a.alive == false) return 
  
  -- flip actor on death - player only?
  if a.alive == false and a.dy > 0 then flip_y = true end
@@ -419,6 +428,7 @@ function _draw()
   -- player states
   if pl.grounded == true then print("g",100,120,7) end
   if pl.alive == true then  print("a",108,120,7) end
+  if pl.platform != nil then  print("p",116,120,7) end
  end
 end
 
@@ -434,9 +444,11 @@ function create_player(x,y)
  pl.restart_y = y
  pl.jump_timer = 0
  pl.update = update_player
+ pl.w = 0.4 -- slightly less to allow us to fit through walls
+ pl.h = 0.4
  
- --pl.action = { fire = fire_bullet_action}
- pl.action = { fire = fire_rope_action, update = update_rope, draw = draw_rope}
+ pl.action = { fire = fire_bullet_action}
+ --pl.action = { fire = fire_rope_action, update = update_rope, draw = draw_rope}
  
  pl.solid = true
  pl.gravity = true
@@ -444,6 +456,8 @@ function create_player(x,y)
  -- init map pos
  map_off_x = pl.x - 8
  map_off_y = pl.y - 8
+ 
+ add_platform_actor(pl)
  return pl
 end
 
@@ -553,24 +567,32 @@ end
 
 function update_player(pl)
 
+ local accel = 0.1
  -- how fast to accelerate
  if pl.in_water == true then 
-  accel = 0.05
- else
-  accel = 0.1
+  accel *= 0.5
  end
  
  -- controls
  if pl.alive == true then
   -- left/right movement
-  if (btn(0)) pl.dx -= accel 
-  if (btn(1)) pl.dx += accel 
+  if btn(0) == true then 
+   pl.dx -= accel 
+  elseif btn(1) == true then 
+   pl.dx += accel 
+  else 
+   pl.dx *= pl.vel_damp 
+  end
+  
+  -- apply velocity clamp
+  local XVelMax = 0.3
+  if(abs(pl.dx) > XVelMax) pl.dx=sgn(pl.dx) * XVelMax
 
   -- jump controls
   if (btn(5)) then
    if pl.grounded == true or pl.on_surface == true then
-    pl.dy -= 0.50
-    pl.jump_timer = 0
+    pl.dy -= 0.4
+    pl.jump_timer = 10
     pl.grounded = false
     if pl.on_surface == true then
     	spawn_splash(pl.x,pl.y,0.5)
@@ -578,16 +600,20 @@ function update_player(pl)
    end 
 	
    -- allow additional jump boost early on in the jump
-   if pl.jump_timer < 10 then
+   if pl.jump_timer > 0 then
     pl.dy -= 0.1
    end
   end
   
   -- swim up/down
   if pl.in_water == true then
-   if btn(2) and pl.on_surface == false then pl.dy -= 0.05 end --up
-   if btn(3) then pl.dy += 0.05 end --down
+   if btn(2) and pl.on_surface == false then pl.dy -= 0.02 end --up
+   if btn(3) then pl.dy += 0.02 end --down
   end
+  
+  local YVelMax = 0.4
+  if(abs(pl.dy) > YVelMax) pl.dy=sgn(pl.dy) * YVelMax
+
   
   -- use action
   if btnp(4) and pl.action.fire != nill then
@@ -601,7 +627,7 @@ function update_player(pl)
  end
   
  -- update jump timer
- if (pl.grounded == false) pl.jump_timer+=1
+ if (pl.grounded == false) pl.jump_timer-=1
  
  -- play a sound if moving
  -- (every 4 ticks)
@@ -658,6 +684,7 @@ function update_bullet(b)
  if fget(hit_tile, k_sprflg_breakable) == true then
   local new_tile = hit_tile + 1
   if fget(new_tile, k_sprflg_breakable) == false then
+   spawn_sprite_explosion(new_tile,flr(b.x),flr(b.y))
    new_tile = background_tile
   end
   mset(b.x,b.y,new_tile)
@@ -688,26 +715,54 @@ function update_bullet(b)
 end
 
 -- moving platform
-platforms = {}
+platforms = {} -- list of all our platform
+platform_actors = {} -- list of actors affected by platforms
 
 -- step 1: check if actors are on platforms
 -- step 2: move platforms
 -- step 3: apply platforms vel to actors on platforms
 -- step 4: apply actor movement
 
+function add_platform_actor(a)
+ add(platform_actors,a)
+end
+
+function remove_platform_actor(a)
+ del(platform_actors,a)
+end
+
+function update_platforms()
+ for a in all (platform_actors) do
+  if a.alive == true then 
+   check_actor_platform(a)
+  end
+ end
+ for p in all(platforms) do
+  move_platform(p)
+ end
+end
+
 function check_actor_platform(a)
  for p in all(platforms) do
   -- check if platform is below actor
-  if a.x > p.x and a.x < p.x + 1 and a.y > p.y and a.y < p.y + 1 then
-   a.platform = p
+  local x=p.x - a.x
+  local y=p.y - a.y
+
+  -- on top of?
+  if ((abs(x) < (a.w + p.w)) and y > 0 and (y < (a.h + p.h + k_pixmap))) then 
+    a.platform = p
+	a.y = p.y - (a.h + p.h + k_pixmap) -- snap on top of platform
+  else
+   a.platform = nil
   end
  end
 end
 
 function create_platform(x,y)
  p = create_actor(x,y)
- p.update = move_platform
+ --p.update = move_platform
  p.spr = 25
+ p.solid = true
  
  --vertical movement range
  --move this into a util function
@@ -734,7 +789,7 @@ function create_platform(x,y)
   end
  end
  
- p.speed = 0.2
+ p.speed = 0.06
  p.dy = p.speed
  
  add(platforms,p)
@@ -827,6 +882,26 @@ function spawn_impact_effect(x,y,xvel,yvel)
  end
 end
 
+function spawn_sprite_explosion(n,x,y)
+ local sx = 8 * (n % 16)
+ local sy = 8 * flr(n / 16)
+ for xoff=0,8 do
+  for yoff=0,8 do
+   local col = sget(sx + xoff,sy + yoff)
+   if col != 0 then
+    p = add_particle()
+    p.life = 30
+    p.x = x + (xoff * k_pixmap)
+    p.y = y + (yoff * k_pixmap)
+    p.dx = -0.5 + rnd(1.0)
+    p.dy = -0.5 + rnd(1.0) 
+    p.grav = 0--k_grav * 0.2
+	p.col = col
+   end 
+  end
+ end
+end
+
 -->8
 -- misc graphics routines
 
@@ -909,11 +984,11 @@ __map__
 0300000000000000000000000000000000000000000000000000000000000000001300001300000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000000000000000003030303030303000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000000000000000003030303030303000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0300001919000000000000000000000000000000000000000000000000000003030303030303030000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0300000000000000000000000000000000000000000000000000000000000003030303030303030000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-031100000000000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+031100191900000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
