@@ -59,7 +59,7 @@ codo_init
   codo_video_init
   codo_mouse_init
   codo_joystick_init
-  Reading controller mappings: D:/Dev/Pico-8/sdl_controllers.txt
+  Reading controller mappings: C:/Users/mcraig/Documents/GitHub/Pico-8/sdl_controllers.txt
   searching for joysticks
     found 0 joysticks
   ok

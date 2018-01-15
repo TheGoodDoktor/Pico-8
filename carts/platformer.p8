@@ -4,6 +4,7 @@ __lua__
 
 
 -- constants
+k_pixmap = 1.0 / 8.0 -- 1 pixel in map coords
 k_grav = 0.1 -- gravitation accel
 k_buoyancy = 0.02
 
@@ -44,11 +45,8 @@ function create_actor(x, y)
  a.alive = true
  a.death_timer = 0
  -- half-width and half-height
- -- slightly less than 0.5 so
- -- that will fit through 1-wide
- -- holes.
- a.w = 0.4
- a.h = 0.4
+ a.w = 0.5
+ a.h = 0.5
  
  add(actors,a)
  
@@ -171,16 +169,16 @@ function solid_actor(a, dx, dy)
     -- overlap initially 
     -- without sticking together    
     if (dx != 0 and abs(x) < abs(a.x-a2.x)) then
-     v=a.dx + a2.dy
-     a.dx = v/2
-     a2.dx = v/2
+     --v=a.dx + a2.dy
+     --a.dx = v/2
+     --a2.dx = v/2
      return true 
     end
     
     if (dy != 0 and abs(y) < abs(a.y-a2.y)) then
-     v=a.dy + a2.dy
-     a.dy=v/2
-     a2.dy=v/2
+     --v=a.dy + a2.dy
+     --a.dy=v/2
+     --a2.dy=v/2
      return true 
     end
     
@@ -250,6 +248,9 @@ function actor_check_death(a)
  if check_map(a.x,a.y,k_sprflg_death) then death = true end
  --if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, k_sprflg_death) then death = true end
  
+ -- squashed?
+ if solid_a(a, 0, 0) then death = true end
+ 
  if death == true and a.alive == true then 
   --kill actor
   a.alive = false
@@ -261,7 +262,13 @@ end
 -- move actor with collision & gravity
 function move_solid_actor(a)
 
-  -- apply x vel first
+ if a.platform != nil then
+  a.x += a.platform.dx
+  a.y += a.platform.dy
+  a.grounded = true
+ end
+ 
+ -- apply x vel first
  if not solid_a(a, a.dx, 0) then
   a.x += a.dx -- no collision, we're good to move
  else   
@@ -371,6 +378,8 @@ end
 
 -- update game
 function _update()
+
+ update_platforms() -- update platforms first
  foreach(actors, update_actor)
  
  update_map()
@@ -419,6 +428,7 @@ function _draw()
   -- player states
   if pl.grounded == true then print("g",100,120,7) end
   if pl.alive == true then  print("a",108,120,7) end
+  if pl.platform != nil then  print("p",116,120,7) end
  end
 end
 
@@ -434,6 +444,8 @@ function create_player(x,y)
  pl.restart_y = y
  pl.jump_timer = 0
  pl.update = update_player
+ pl.w = 0.4 -- slightly less to allow us to fit through walls
+ pl.h = 0.4
  
  --pl.action = { fire = fire_bullet_action}
  pl.action = { fire = fire_rope_action, update = update_rope, draw = draw_rope}
@@ -444,6 +456,8 @@ function create_player(x,y)
  -- init map pos
  map_off_x = pl.x - 8
  map_off_y = pl.y - 8
+ 
+ add_platform_actor(pl)
  return pl
 end
 
@@ -688,26 +702,54 @@ function update_bullet(b)
 end
 
 -- moving platform
-platforms = {}
+platforms = {} -- list of all our platform
+platform_actors = {} -- list of actors affected by platforms
 
 -- step 1: check if actors are on platforms
 -- step 2: move platforms
 -- step 3: apply platforms vel to actors on platforms
 -- step 4: apply actor movement
 
+function add_platform_actor(a)
+ add(platform_actors,a)
+end
+
+function remove_platform_actor(a)
+ del(platform_actors,a)
+end
+
+function update_platforms()
+ for a in all (platform_actors) do
+  if a.alive == true then 
+   check_actor_platform(a)
+  end
+ end
+ for p in all(platforms) do
+  move_platform(p)
+ end
+end
+
 function check_actor_platform(a)
  for p in all(platforms) do
   -- check if platform is below actor
-  if a.x > p.x and a.x < p.x + 1 and a.y > p.y and a.y < p.y + 1 then
-   a.platform = p
+  local x=p.x - a.x
+  local y=p.y - a.y
+
+  -- on top of?
+  if ((abs(x) < (a.w + p.w)) and y > 0 and (y < (a.h + p.h + k_pixmap))) then 
+    a.platform = p
+	a.y = p.y - (a.h + p.h + k_pixmap) -- snap on top of platform
+  else
+   a.platform = nil
   end
  end
 end
 
 function create_platform(x,y)
  p = create_actor(x,y)
- p.update = move_platform
+ --p.update = move_platform
  p.spr = 25
+ p.solid = true
  
  --vertical movement range
  --move this into a util function
@@ -734,7 +776,7 @@ function create_platform(x,y)
   end
  end
  
- p.speed = 0.2
+ p.speed = 0.06
  p.dy = p.speed
  
  add(platforms,p)
@@ -909,11 +951,11 @@ __map__
 0300000000000000000000000000000000000000000000000000000000000000001300001300000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000000000000000003030303030303000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000000000000000003030303030303000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0300001919000000000000000000000000000000000000000000000000000003030303030303030000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0300000000000000000000000000000000000000000000000000000000000003030303030303030000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-031100000000000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+031100191900000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
