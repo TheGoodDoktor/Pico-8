@@ -428,6 +428,17 @@ function _draw()
    local dy = (pl.y - pl.rope.anchor.y)-- / pl.rope.length 
    local ang = atan2(dy,dx)
    print("ang "..ang,0,120,7)
+   --[[timeval = 1
+   local angle = ang * cos(sqrt(k_grav/pl.rope.length) * timeval)
+   
+   local x1 = ((pl.rope.anchor.x - map_off_x) * 8) 
+   local y1 = ((pl.rope.anchor.y - map_off_y) * 8) 
+   local x2 = x1 + sin(angle) * 80
+   local y2 = y1 + cos(angle) * 80
+   
+   line(x1,y1,x2,y2,10)
+   ]]
+
   else
    print("x "..pl.x,0,120,7)
    print("y "..pl.y,64,120,7)
@@ -488,7 +499,14 @@ end
 
 function fire_rope_action(pl)
  if (pl.rope != nil) return -- already have a rope deployed
- local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x,pl.y - 10,k_sprflg_solid)
+ if (pl.in_water == true) return -- rope doesn't work in the water
+ local xdir = 0
+ local ydir = -10
+ if btn(2) == true then	-- diagonals
+  if(btn(1)) xdir += 10
+  if(btn(0)) xdir -=10
+ end
+ local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x + xdir,pl.y + ydir,k_sprflg_solid)
  if hit == true then
   local r = {}
   r.anchor = {}
@@ -503,7 +521,7 @@ end
 
 function update_rope(pl)
  if (pl.rope == nil) return 
- if btn(4) == false then
+ if btn(4) == false or pl.in_water == true then
   pl.rope = nil
   return
  end
