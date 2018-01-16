@@ -447,8 +447,8 @@ function create_player(x,y)
  pl.w = 0.4 -- slightly less to allow us to fit through walls
  pl.h = 0.4
  
- pl.action = { fire = fire_bullet_action}
- --pl.action = { fire = fire_rope_action, update = update_rope, draw = draw_rope}
+ --pl.action = { fire = fire_bullet_action}
+ pl.action = { fire = fire_rope_action, update = update_rope, draw = draw_rope}
  
  pl.solid = true
  pl.gravity = true
@@ -473,6 +473,7 @@ function restart_player()
  pl.alive = true
 end
 
+-- Rope code
 function fire_bullet_action(pl)
    local b_vel = sgn(pl.dx) * 0.5
    b = create_bullet(pl,pl.x,pl.y,b_vel,0)
@@ -511,8 +512,8 @@ function update_rope(pl)
  
  --force_x += -pl.dx * frictionconstant;
  --force_y += -pl.dy * frictionconstant;
- pl.dx += force_x
- pl.dy += force_y
+ pl.x += force_x
+ pl.y += force_y
  
  -- change rope length with up/down
  if (btn(2)) pl.rope.length -= 0.1
@@ -575,13 +576,30 @@ function update_player(pl)
  
  -- controls
  if pl.alive == true then
+ 
   -- left/right movement
-  if btn(0) == true then 
-   pl.dx -= accel 
-  elseif btn(1) == true then 
-   pl.dx += accel 
-  else 
-   pl.dx *= pl.vel_damp 
+  -- todo: different movement controls on rope
+  if pl.rope != nil then
+   local dx = rope.anchor.x - pl.x
+   local dy = rope.anchor.y - pl.y
+   local ang = atan2(dx,dy)
+   if btn(0) == true then
+    ang += 0.01
+   else if btn(1) == true then
+    ang -= 0.02
+   end
+   
+   pl.dx = (rope.anchor.x + sin(ang) * pl.rope.length) - pl.x
+   pl.dy = (rope.anchor.y + cos(ang) * pl.rope.length) - pl.y
+   
+  else
+   if btn(0) == true then 
+    pl.dx -= accel 
+   elseif btn(1) == true then 
+    pl.dx += accel 
+   else --if pl.rope == nil then
+    pl.dx *= pl.vel_damp 
+   end
   end
   
   -- apply velocity clamp
@@ -620,7 +638,7 @@ function update_player(pl)
    pl.action.fire(pl)
   end
   
- end
+ end -- alive
  
  if pl.action.update != nil then
   pl.action.update(pl)
@@ -752,6 +770,12 @@ function check_actor_platform(a)
   if ((abs(x) < (a.w + p.w)) and y > 0 and (y < (a.h + p.h + k_pixmap))) then 
     a.platform = p
 	a.y = p.y - (a.h + p.h + k_pixmap) -- snap on top of platform
+	
+	if a.rope!=nil then -- re-lengthen rope
+	 local dx = a.rope.anchor.x - a.x
+	 local dy = a.rope.anchor.y - a.y
+	 a.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
+	end
   else
    a.platform = nil
   end
