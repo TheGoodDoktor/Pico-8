@@ -422,9 +422,16 @@ function _draw()
  if pl == nil then
   print("no player",0,120)
  else
-  print("x "..pl.x,0,120,7)
-  print("y "..pl.y,64,120,7)
  
+  if pl.rope != nil then
+   local dx = (pl.x - pl.rope.anchor.x)-- / pl.rope.length 
+   local dy = (pl.y - pl.rope.anchor.y)-- / pl.rope.length 
+   local ang = atan2(dy,dx)
+   print("ang "..ang,0,120,7)
+  else
+   print("x "..pl.x,0,120,7)
+   print("y "..pl.y,64,120,7)
+  end
   -- player states
   if pl.grounded == true then print("g",100,120,7) end
   if pl.alive == true then  print("a",108,120,7) end
@@ -473,7 +480,7 @@ function restart_player()
  pl.alive = true
 end
 
--- Rope code
+-- rope code
 function fire_bullet_action(pl)
    local b_vel = sgn(pl.dx) * 0.5
    b = create_bullet(pl,pl.x,pl.y,b_vel,0)
@@ -512,8 +519,11 @@ function update_rope(pl)
  
  --force_x += -pl.dx * frictionconstant;
  --force_y += -pl.dy * frictionconstant;
- pl.x += force_x
- pl.y += force_y
+ pl.dx += force_x
+ pl.dy += force_y
+ 
+ pl.dx *= 0.9
+ pl.dy *= 0.9
  
  -- change rope length with up/down
  if (btn(2)) pl.rope.length -= 0.1
@@ -579,20 +589,20 @@ function update_player(pl)
  
   -- left/right movement
   -- todo: different movement controls on rope
-  if pl.rope != nil then
-   local dx = rope.anchor.x - pl.x
-   local dy = rope.anchor.y - pl.y
+  --[[if pl.rope != nil then
+   local dx = pl.x - pl.rope.anchor.x 
+   local dy = pl.y - pl.rope.anchor.y
    local ang = atan2(dx,dy)
-   if btn(0) == true then
+   --[[if btn(0) == true then
     ang += 0.01
-   else if btn(1) == true then
+   elseif btn(1) == true then
     ang -= 0.02
-   end
+   end]]
    
-   pl.dx = (rope.anchor.x + sin(ang) * pl.rope.length) - pl.x
-   pl.dy = (rope.anchor.y + cos(ang) * pl.rope.length) - pl.y
+   pl.x = (pl.rope.anchor.x + (sin(ang) * pl.rope.length)) -- - pl.x
+   pl.y = (pl.rope.anchor.y + (cos(ang) * pl.rope.length)) -- - pl.y
    
-  else
+  else]]
    if btn(0) == true then 
     pl.dx -= accel 
    elseif btn(1) == true then 
@@ -600,11 +610,11 @@ function update_player(pl)
    else --if pl.rope == nil then
     pl.dx *= pl.vel_damp 
    end
-  end
+  --end
   
   -- apply velocity clamp
-  local XVelMax = 0.3
-  if(abs(pl.dx) > XVelMax) pl.dx=sgn(pl.dx) * XVelMax
+  local xvelmax = 0.3
+  if(abs(pl.dx) > xvelmax) pl.dx=sgn(pl.dx) * xvelmax
 
   -- jump controls
   if (btn(5)) then
@@ -629,8 +639,8 @@ function update_player(pl)
    if btn(3) then pl.dy += 0.02 end --down
   end
   
-  local YVelMax = 0.4
-  if(abs(pl.dy) > YVelMax) pl.dy=sgn(pl.dy) * YVelMax
+  local yvelmax = 0.4
+  if(abs(pl.dy) > yvelmax) pl.dy=sgn(pl.dy) * yvelmax
 
   
   -- use action
@@ -640,9 +650,7 @@ function update_player(pl)
   
  end -- alive
  
- if pl.action.update != nil then
-  pl.action.update(pl)
- end
+ 
   
  -- update jump timer
  if (pl.grounded == false) pl.jump_timer-=1
@@ -672,6 +680,10 @@ function update_player(pl)
  end
  
  move_solid_actor(pl)
+ 
+ if pl.action.update != nil then
+  pl.action.update(pl)
+ end
  
 end
 
