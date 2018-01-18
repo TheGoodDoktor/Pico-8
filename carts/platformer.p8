@@ -246,7 +246,6 @@ function actor_check_death(a)
  end
  
  if check_map(a.x,a.y,k_sprflg_death) then death = true end
- --if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, k_sprflg_death) then death = true end
  
  -- squashed?
  if solid_a(a, 0, 0) then death = true end
@@ -790,6 +789,7 @@ function update_platforms()
  end
 end
 
+-- check if an actor is standing on a platform
 function check_actor_platform(a)
  for p in all(platforms) do
   -- check if platform is below actor
@@ -810,6 +810,38 @@ function check_actor_platform(a)
    a.platform = nil
   end
  end
+end
+
+-- calculate an outcode for a givven point
+function calc_outcode(p,x,y)
+ local outcode = 0
+ if(x < p.x - p.w) outcode = bor(outcode, 1 )
+ if(x > p.x + p.w) outcode = bor(outcode, 2 )
+ if(y < p.y - p.h) outcode = bor(outcode, 4 )
+ if(y > p.y + p.h) outcode = bor(outcode, 8 )
+ return outcode
+end
+
+-- check if a line intersects a platform
+-- returns platform (nil if none) & intersection position
+function check_line_platform(x1,y1,x2,y2)
+ local platform = nil
+ local closest_dist_2 = 100 * 100
+ 
+ for p in all(platforms) do
+  -- check line against platform AABB
+  -- calc outcodes
+  local outa = calc_outcode(p,x1,y1)
+  local outb = calc_outcode(p,x2,y2)
+  
+  -- does line go through AABB?
+  if band(outa,outb)==0 then
+  
+  end
+  
+ end
+ 
+ return platform,x2,y2
 end
 
 function create_platform(x,y)
