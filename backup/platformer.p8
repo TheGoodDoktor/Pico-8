@@ -6,7 +6,7 @@ __lua__
 -- constants
 k_pixmap = 1.0 / 8.0 -- 1 pixel in map coords
 k_grav = 0.1 -- gravitation accel
-k_buoyancy = 0.02
+k_buoyancy = 0.002
 
 k_sprflg_solid = 1
 k_sprflg_death = 2
@@ -20,6 +20,16 @@ map_off_y = 0
 global_tick = 0
 
 actors = {} --all actors in world
+actor_create={} -- actor creation table - is indexed by tile type
+
+-- register actor creation with factory
+function register_actors()
+ 
+ actor_create[17] = create_player
+ actor_create[64] = create_platform -- up/down
+ actor_create[65] = create_platform -- left/right
+
+end
 
 -- make an actor
 -- and add to global collection
@@ -57,8 +67,6 @@ function kill_actor(a)
  del(actors,a)
 end
 
--- actor creation table - is indexed by tile type
-actor_create={}
 
 -- animated tiles
 anim_tiles={}
@@ -78,8 +86,8 @@ function setup_map()
    -- look up creation function for tile
    local create_fn = actor_create[tile]
    if create_fn != nil then 
-				mset(mx,my,0)	-- clear tile
-				create_fn(mx+0.5,my+0.5) -- create actor
+	mset(mx,my,0)	-- clear tile
+	create_fn(mx+0.5,my+0.5,tile) -- create actor
    end
    
    -- look up animated tiles
@@ -96,6 +104,7 @@ end
 
 function _init()
   
+ register_actors()
  setup_map()
  
  -- make a bouncy ball
@@ -191,19 +200,19 @@ end
 
 -- check if we are overlapping another actor
 function overlapping_actor(a)
-	for a2 in all(actors) do
-  if a2 != a then
-   local x=a.x - a2.x
-   local y=a.y - a2.y
+  for a2 in all(actors) do
+   if a2 != a then
+    local x=a.x - a2.x
+    local y=a.y - a2.y
 
-   -- overlapping?
-   if ((abs(x) < (a.w+a2.w)) and (abs(y) < (a.h+a2.h))) then 
-    return a2
+    -- overlapping?
+    if ((abs(x) < (a.w+a2.w)) and (abs(y) < (a.h+a2.h))) then 
+     return a2
+    end
    end
   end
- end
   
- return nil
+  return nil
 end
 
 -- checks both walls and actors
@@ -246,13 +255,13 @@ function actor_check_death(a)
  end
  
  if check_map(a.x,a.y,k_sprflg_death) then death = true end
- --if check_map_area(a.x + a.dx,a.y + a.dy, a.w, a.h, k_sprflg_death) then death = true end
  
  -- squashed?
  if solid_a(a, 0, 0) then death = true end
  
  if death == true and a.alive == true then 
   --kill actor
+  spawn_sprite_explosion(a.spr,a.x - a.w,a.y - a.h)
   a.alive = false
   a.death_timer = 100
   a.dy -= 2
@@ -272,8 +281,7 @@ function move_solid_actor(a)
  if not solid_a(a, a.dx, 0) then
   a.x += a.dx -- no collision, we're good to move
  else   
-  local step = sgn(a.dx) * (1.0/8.0) -- single pixel step
-  --if a.dx > 0 then step = 0.1 else step = -0.1 end
+  local step = sgn(a.dx) * k_pixmap -- single pixel step
   
   while not solid_a(a, step, 0) do
    a.x += step
@@ -290,21 +298,20 @@ function move_solid_actor(a)
   a.y += a.dy
   a.grounded = false
  else
-		-- landed?
+  -- landed?
   if a.dy > 0 and a.grounded == false then
-			a.grounded = true
-			sfx(2)
+   a.grounded = true
+   sfx(2)
   end
   
-  if a.dy > 0 then step = 0.1 else step = -0.1 end
+  local step = sgn(a.dy) * k_pixmap -- single pixel step
   
   while not solid_a(a, 0, step) do
    a.y += step
   end
   
   a.dy = 0
-  
-  --a.dy *= -a.bounce
+  a.jump_timer = 0
  end
  
  -- check for water
@@ -313,6 +320,7 @@ function move_solid_actor(a)
   player_tile = mget(a.x,a.y - (1.0/8));
   if fget(player_tile, k_sprflg_water) == false then
    a.on_surface = true
+   a.dy = 0
    -- surface splash
    if abs(a.dx) > 0 and (a.t % 4) == 0 then 
     spawn_splash(a.x,a.y,abs(a.dx * 0.5))
@@ -323,6 +331,7 @@ function move_solid_actor(a)
   end
   if a.in_water == false then
    spawn_splash(a.x,a.y,a.dy * 2)
+   a.dy *= 0.2
   end
   a.in_water = true
  else
@@ -335,9 +344,9 @@ function move_solid_actor(a)
  end
  
  -- update animation
- a.frame += abs(a.dx) * 4
- a.frame += abs(a.dy) * 4
- a.frame %= a.frames
+ --a.frame += abs(a.dx) * 4
+ --a.frame += abs(a.dy) * 4
+ --a.frame %= a.frames
 
  a.t += 1
  
@@ -386,18 +395,8 @@ function _update()
 end
 
 function draw_actor(a)
- local sx = ((a.x - map_off_x) * 8) - 4
- local sy = ((a.y - map_off_y) * 8) - 4
- local flip_x = false	-- todo: flip left/right based on vel
- local flip_y = false
- 
- -- flip actor on death - player only?
- if a.alive == false and a.dy > 0 then flip_y = true end
- spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
- 
- -- draw action - should probably be in a player render method
- if a.action != nill and a.action.draw != nil then
-  a.action.draw(a)
+ if a.draw != nil then
+  a.draw(a)
  end
 end
 
@@ -419,9 +418,27 @@ function _draw()
  if pl == nil then
   print("no player",0,120)
  else
-  print("x "..pl.x,0,120,7)
-  print("y "..pl.y,64,120,7)
  
+  if pl.rope != nil then
+   local dx = (pl.x - pl.rope.anchor.x)-- / pl.rope.length 
+   local dy = (pl.y - pl.rope.anchor.y)-- / pl.rope.length 
+   local ang = atan2(dy,dx)
+   print("ang "..ang,0,120,7)
+   --[[timeval = 1
+   local angle = ang * cos(sqrt(k_grav/pl.rope.length) * timeval)
+   
+   local x1 = ((pl.rope.anchor.x - map_off_x) * 8) 
+   local y1 = ((pl.rope.anchor.y - map_off_y) * 8) 
+   local x2 = x1 + sin(angle) * 80
+   local y2 = y1 + cos(angle) * 80
+   
+   line(x1,y1,x2,y2,10)
+   ]]
+
+  else
+   print("x "..pl.x,0,120,7)
+   print("y "..pl.y,64,120,7)
+  end
   -- player states
   if pl.grounded == true then print("g",100,120,7) end
   if pl.alive == true then  print("a",108,120,7) end
@@ -434,13 +451,14 @@ end
 -- individual actor code here
 
 -- player code
-function create_player(x,y)
+function create_player(x,y,spr)
  pl = create_actor(x,y)
  pl.spr = 17
  pl.restart_x = x
  pl.restart_y = y
  pl.jump_timer = 0
  pl.update = update_player
+ pl.draw = draw_player
  pl.w = 0.4 -- slightly less to allow us to fit through walls
  pl.h = 0.4
  
@@ -458,8 +476,6 @@ function create_player(x,y)
  return pl
 end
 
--- register with factory
-actor_create[17] = create_player
 
 -- called when player dies
 function restart_player()
@@ -470,14 +486,22 @@ function restart_player()
  pl.alive = true
 end
 
+-- rope code
 function fire_bullet_action(pl)
- local b_vel = sgn(pl.dx) * 0.5
- b = create_bullet(pl,pl.x,pl.y,b_vel,0)
+   local b_vel = sgn(pl.dx) * 0.5
+   b = create_bullet(pl,pl.x,pl.y,b_vel,0)
 end
 
 function fire_rope_action(pl)
  if (pl.rope != nil) return -- already have a rope deployed
- local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x,pl.y - 10,k_sprflg_solid)
+ if (pl.in_water == true) return -- rope doesn't work in the water
+ local xdir = 0
+ local ydir = -10
+ if btn(2) == true then	-- diagonals
+  if(btn(1)) xdir += 10
+  if(btn(0)) xdir -=10
+ end
+ local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x + xdir,pl.y + ydir,k_sprflg_solid)
  if hit == true then
   local r = {}
   r.anchor = {}
@@ -492,7 +516,7 @@ end
 
 function update_rope(pl)
  if (pl.rope == nil) return 
- if btn(4) == false then
+ if btn(4) == false or pl.in_water == true then
   pl.rope = nil
   return
  end
@@ -510,6 +534,9 @@ function update_rope(pl)
  --force_y += -pl.dy * frictionconstant;
  pl.dx += force_x
  pl.dy += force_y
+ 
+ pl.dx *= 0.9
+ pl.dy *= 0.9
  
  -- change rope length with up/down
  if (btn(2)) pl.rope.length -= 0.1
@@ -536,11 +563,9 @@ function update_rope(pl)
     local dx = pl.rope.anchor.x - pl.x
     local dy = pl.rope.anchor.y - pl.y
     pl.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
-   end
-  end
-     
+   end 
+  end 
  end
-  
 end
 
 function draw_rope(pl)
@@ -563,29 +588,49 @@ end
 
 function update_player(pl)
 
+ local accel = 0.1
  -- how fast to accelerate
  if pl.in_water == true then 
-  accel = 0.05
- else
-  accel = 0.1
+  accel *= 0.5
  end
  
  -- controls
  if pl.alive == true then
+ 
   -- left/right movement
-  if btn(0) then pl.dx -= accel 
-  elseif btn(1) then pl.dx += accel 
-  else pl.dx *= pl.vel_damp
+  -- todo: different movement controls on rope
+  --[[if pl.rope != nil then
+   local dx = pl.x - pl.rope.anchor.x 
+   local dy = pl.y - pl.rope.anchor.y
+   local ang = atan2(dx,dy)
+   --[[if btn(0) == true then
+    ang += 0.01
+   elseif btn(1) == true then
+    ang -= 0.02
+   end]]
+   
+   pl.x = (pl.rope.anchor.x + (sin(ang) * pl.rope.length)) -- - pl.x
+   pl.y = (pl.rope.anchor.y + (cos(ang) * pl.rope.length)) -- - pl.y
+   
+  else]]
+   if btn(0) == true then 
+    pl.dx -= accel 
+   elseif btn(1) == true then 
+    pl.dx += accel 
+   else --if pl.rope == nil then
+    pl.dx *= pl.vel_damp 
+   end
+  --end
   
   -- apply velocity clamp
- local xvelmax = 0.1
- if(abs(a.dx) > xvelmax) a.dx=sgn(a.dx) * xvelmax
+  local xvelmax = 0.3
+  if(abs(pl.dx) > xvelmax) pl.dx=sgn(pl.dx) * xvelmax
 
   -- jump controls
   if (btn(5)) then
    if pl.grounded == true or pl.on_surface == true then
-    pl.dy -= 0.50
-    pl.jump_timer = 0
+    pl.dy -= 0.4
+    pl.jump_timer = 10
     pl.grounded = false
     if pl.on_surface == true then
     	spawn_splash(pl.x,pl.y,0.5)
@@ -593,19 +638,19 @@ function update_player(pl)
    end 
 	
    -- allow additional jump boost early on in the jump
-   if pl.jump_timer < 10 then
+   if pl.jump_timer > 0 then
     pl.dy -= 0.1
    end
   end
   
   -- swim up/down
   if pl.in_water == true then
-   if btn(2) and pl.on_surface == false then pl.dy -= 0.05 end --up
-   if btn(3) then pl.dy += 0.05 end --down
+   if btn(2) and pl.on_surface == false then pl.dy -= 0.02 end --up
+   if btn(3) then pl.dy += 0.02 end --down
   end
   
-  local yvelmax = 0.2
-  if(abs(a.dy) > yvelmax) a.dy=sgn(a.dy) * yvelmax
+  local yvelmax = 0.4
+  if(abs(pl.dy) > yvelmax) pl.dy=sgn(pl.dy) * yvelmax
 
   
   -- use action
@@ -613,14 +658,12 @@ function update_player(pl)
    pl.action.fire(pl)
   end
   
- end
+ end -- alive
  
- if pl.action.update != nil then
-  pl.action.update(pl)
- end
+ 
   
  -- update jump timer
- if (pl.grounded == false) pl.jump_timer+=1
+ if (pl.grounded == false) pl.jump_timer-=1
  
  -- play a sound if moving
  -- (every 4 ticks)
@@ -648,6 +691,28 @@ function update_player(pl)
  
  move_solid_actor(pl)
  
+ if pl.action.update != nil then
+  pl.action.update(pl)
+ end
+ 
+end
+
+function draw_player(a)
+ local sx = ((a.x - map_off_x) * 8) - 4
+ local sy = ((a.y - map_off_y) * 8) - 4
+ local flip_x = false	-- todo: flip left/right based on vel
+ local flip_y = false
+ 
+ if(a.alive == false) return -- don't render dead player
+ 
+ -- flip actor l/r based on vel
+ if (a.dx < 0) flip_x = true 
+ spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
+ 
+ -- draw action 
+ if a.action != nill and a.action.draw != nil then
+  a.action.draw(a)
+ end
 end
 
 -- bullet
@@ -677,6 +742,7 @@ function update_bullet(b)
  if fget(hit_tile, k_sprflg_breakable) == true then
   local new_tile = hit_tile + 1
   if fget(new_tile, k_sprflg_breakable) == false then
+   spawn_sprite_explosion(new_tile,flr(b.x),flr(b.y))
    new_tile = background_tile
   end
   mset(b.x,b.y,new_tile)
@@ -734,6 +800,7 @@ function update_platforms()
  end
 end
 
+-- check if an actor is standing on a platform
 function check_actor_platform(a)
  for p in all(platforms) do
   -- check if platform is below actor
@@ -744,55 +811,128 @@ function check_actor_platform(a)
   if ((abs(x) < (a.w + p.w)) and y > 0 and (y < (a.h + p.h + k_pixmap))) then 
     a.platform = p
 	a.y = p.y - (a.h + p.h + k_pixmap) -- snap on top of platform
+	
+	if a.rope!=nil then -- re-lengthen rope
+	 local dx = a.rope.anchor.x - a.x
+	 local dy = a.rope.anchor.y - a.y
+	 a.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
+	end
   else
    a.platform = nil
   end
  end
 end
 
-function create_platform(x,y)
- p = create_actor(x,y)
- --p.update = move_platform
- p.spr = 25
- p.solid = true
+-- calculate an outcode for a givven point
+function calc_outcode(p,x,y)
+ local outcode = 0
+ if(x < p.x - p.w) outcode = bor(outcode, 1 )
+ if(x > p.x + p.w) outcode = bor(outcode, 2 )
+ if(y < p.y - p.h) outcode = bor(outcode, 4 )
+ if(y > p.y + p.h) outcode = bor(outcode, 8 )
+ return outcode
+end
+
+-- check if a line intersects a platform
+-- returns platform (nil if none) & intersection position
+function check_line_platform(x1,y1,x2,y2)
+ local platform = nil
+ local closest_dist_2 = 100 * 100
  
- --vertical movement range
- --move this into a util function
- local miny = y
- local maxy = y
- while p.miny == nil or p.maxy == nil do
+ for p in all(platforms) do
+  -- check line against platform AABB
+  -- calc outcodes
+  local outa = calc_outcode(p,x1,y1)
+  local outb = calc_outcode(p,x2,y2)
   
-  if p.miny == nil then
-   local tval = mget(x,miny)
-   if fget(tval,k_sprflg_solid) == true then 
-    p.miny = miny + 1
-   end
-   miny -= 1
-   if (miny <= 0) p.miny = 0.5
+  -- does line go through AABB?
+  if band(outa,outb)==0 then
+  
   end
   
-  if p.maxy == nil then
-   local tval = mget(x,maxy)
-   if fget(tval,k_sprflg_solid) == true then 
-    p.maxy = maxy - 1
-   end
-   maxy += 1
-   if (maxy >= 34) p.maxy = 33
-  end
  end
  
+ return platform,x2,y2
+end
+
+function calc_movement_range(x,y,xdir,size)
+ res = {}
+ local max_range =0
+ local start_pos = 0
+ if xdir == true then 
+  max_range = 127 
+  start_pos = x
+ else 
+  max_range = 34 
+  start_pos = y
+ end
+ local min_val = start_pos
+ local max_val = start_pos + size
+ 
+ while res.min == nil or res.max == nil do
+  
+  if res.min == nil then
+   local xp = x
+   local yp = y
+   if xdir == true then xp = min_val else yp = min_val end
+   local tval = mget(xp,yp)
+   if fget(tval,k_sprflg_solid) == true then 
+    res.min = min_val + 1
+   end
+   min_val -= 1
+   if (min_val <= 0) res.min = 0.5
+  end
+  
+  if res.max == nil then
+   local xp = x
+   local yp = y
+   if xdir == true then xp = max_val else yp = max_val end
+   local tval = mget(xp,yp)
+   if fget(tval,k_sprflg_solid) == true then 
+    res.max = max_val - 1
+   end
+   max_val += 1
+   if (max_val >= max_range) res.max_val = max_range - 1
+  end
+ end
+ return res
+end
+
+function create_platform(x,y,spr)
+ p = create_actor(x,y)
+ p.spr = 25
+ p.solid = true
  p.speed = 0.06
- p.dy = p.speed
+ p.xdir = false
+ p.draw = draw_platform
+ if(spr == 65) p.xdir = true
+
+ -- calc movement range
+ local size = 1
+ local range = calc_movement_range(x,y,p.xdir,size)
+ if p.xdir == false then -- vertical
+  p.miny = res.min
+  p.maxy = res.max
+  p.dy = p.speed
+ else -- horizontal
+  p.minx = res.min
+  p.maxx = res.max
+  p.dx = p.speed
+ end
  
  add(platforms,p)
  return p
 end
--- register with factory
-actor_create[25] = create_platform
 
 function move_platform(p)
  p.x += p.dx
  p.y += p.dy
+ if p.minx!=nil and p.x <= p.minx then
+  p.dx = p.speed
+ end
+ if p.maxx!=nil and p.x >= p.maxx then
+  p.dx = -p.speed
+ end
  if p.miny!=nil and p.y <= p.miny then
   p.dy = p.speed
  end
@@ -800,6 +940,13 @@ function move_platform(p)
   p.dy = -p.speed
  end
  
+end
+
+function draw_platform(a)
+ local sx = ((a.x - map_off_x) * 8) - 4
+ local sy = ((a.y - map_off_y) * 8) - 4
+ spr(a.spr + a.frame, sx, sy)
+
 end
 
 -->8
@@ -874,6 +1021,26 @@ function spawn_impact_effect(x,y,xvel,yvel)
  end
 end
 
+function spawn_sprite_explosion(n,x,y)
+ local sx = 8 * (n % 16)
+ local sy = 8 * flr(n / 16)
+ for xoff=0,8 do
+  for yoff=0,8 do
+   local col = sget(sx + xoff,sy + yoff)
+   if col != 0 then
+    p = add_particle()
+    p.life = 30
+    p.x = x + (xoff * k_pixmap)
+    p.y = y + (yoff * k_pixmap)
+    p.dx = -0.5 + rnd(1.0)
+    p.dy = -0.5 + rnd(1.0) 
+    p.grav = 0--k_grav * 0.2
+	p.col = col
+   end 
+  end
+ end
+end
+
 -->8
 -- misc graphics routines
 
@@ -926,6 +1093,14 @@ aaaaaaaa066006606600006600999900cccccccc0000000061111111610111116101010155555555
 00000000228888882288888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000022888800228888000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000002222000022220000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+77777777700000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00777000707007070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07070700770000770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00070000777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00070000770000770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07070700707007070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00777000700000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+77777777700000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
 0002020200000000000404040404040000000008100022222202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -960,7 +1135,7 @@ __map__
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-031100191900000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+031100404041000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

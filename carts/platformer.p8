@@ -8,11 +8,16 @@ k_pixmap = 1.0 / 8.0 -- 1 pixel in map coords
 k_grav = 0.1 -- gravitation accel
 k_buoyancy = 0.002
 
+-- sprite flags
 k_sprflg_solid = 1
 k_sprflg_death = 2
 k_sprflg_pickup = 3
 k_sprflg_water = 4  
 k_sprflg_breakable = 5
+
+-- special tiles
+k_tile_back = 0 	-- tile to use for background replace
+k_tile_block = 66 	-- tile to use to block movement
 
 -- map scroll values
 map_off_x = 0
@@ -20,6 +25,16 @@ map_off_y = 0
 global_tick = 0
 
 actors = {} --all actors in world
+actor_create={} -- actor creation table - is indexed by tile type
+
+-- register actor creation with factory
+function register_actors()
+ 
+ actor_create[17] = create_player
+ actor_create[64] = create_platform -- up/down
+ actor_create[65] = create_platform -- left/right
+
+end
 
 -- make an actor
 -- and add to global collection
@@ -57,20 +72,18 @@ function kill_actor(a)
  del(actors,a)
 end
 
--- actor creation table - is indexed by tile type
-actor_create={}
 
 -- animated tiles
 anim_tiles={}
 anim_tiles[9] = { frames = {9,10} }
 anim_tiles[11] = { frames = {11,12,13,14,15,15,15,15,14,13,12,11} }
 
--- tile to use for background replace
-background_tile = 0
+
 
 -- iterate through map and create actors for each actor tile
 function setup_map()
 
+ -- first pass
  for mx = 0,128 do
   for my=0,32 do
    tile = mget(mx,my) -- get tile
@@ -78,8 +91,8 @@ function setup_map()
    -- look up creation function for tile
    local create_fn = actor_create[tile]
    if create_fn != nil then 
-	mset(mx,my,0)	-- clear tile
-	create_fn(mx+0.5,my+0.5) -- create actor
+	mset(mx,my,k_tile_back)	-- clear tile
+	create_fn(mx+0.5,my+0.5,tile) -- create actor
    end
    
    -- look up animated tiles
@@ -91,11 +104,19 @@ function setup_map()
    
   end
  end
-
+ 
+ -- second pass
+ for mx = 0,128 do
+  for my=0,32 do
+   tile = mget(mx,my) -- get tile
+   if(tile == k_tile_block) mset(mx,my,k_tile_back)
+  end
+ end
 end
 
 function _init()
   
+ register_actors()
  setup_map()
  
  -- make a bouncy ball
@@ -146,7 +167,7 @@ function check_pickup(x,y)
 
  local tile = mget(x,y)
  if fget(tile, k_sprflg_pickup) then
-	mset(x,y, background_tile)
+	mset(x,y, k_tile_back)
 	return tile
  end
  
@@ -386,20 +407,8 @@ function _update()
 end
 
 function draw_actor(a)
- local sx = ((a.x - map_off_x) * 8) - 4
- local sy = ((a.y - map_off_y) * 8) - 4
- local flip_x = false	-- todo: flip left/right based on vel
- local flip_y = false
- 
- if(a.alive == false) return 
- 
- -- flip actor on death - player only?
- if a.alive == false and a.dy > 0 then flip_y = true end
- spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
- 
- -- draw action - should probably be in a player render method
- if a.action != nill and a.action.draw != nil then
-  a.action.draw(a)
+ if a.draw != nil then
+  a.draw(a)
  end
 end
 
@@ -454,13 +463,14 @@ end
 -- individual actor code here
 
 -- player code
-function create_player(x,y)
+function create_player(x,y,spr)
  pl = create_actor(x,y)
  pl.spr = 17
  pl.restart_x = x
  pl.restart_y = y
  pl.jump_timer = 0
  pl.update = update_player
+ pl.draw = draw_player
  pl.w = 0.4 -- slightly less to allow us to fit through walls
  pl.h = 0.4
  
@@ -478,8 +488,6 @@ function create_player(x,y)
  return pl
 end
 
--- register with factory
-actor_create[17] = create_player
 
 -- called when player dies
 function restart_player()
@@ -567,12 +575,9 @@ function update_rope(pl)
     local dx = pl.rope.anchor.x - pl.x
     local dy = pl.rope.anchor.y - pl.y
     pl.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
-   end
-  end
-     
+   end 
+  end 
  end
- 
- 
 end
 
 function draw_rope(pl)
@@ -704,6 +709,24 @@ function update_player(pl)
  
 end
 
+function draw_player(a)
+ local sx = ((a.x - map_off_x) * 8) - 4
+ local sy = ((a.y - map_off_y) * 8) - 4
+ local flip_x = false	-- todo: flip left/right based on vel
+ local flip_y = false
+ 
+ if(a.alive == false) return -- don't render dead player
+ 
+ -- flip actor l/r based on vel
+ if (a.dx < 0) flip_x = true 
+ spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
+ 
+ -- draw action 
+ if a.action != nill and a.action.draw != nil then
+  a.action.draw(a)
+ end
+end
+
 -- bullet
 function create_bullet(owner,x,y,xvel,yvel)
  b = create_actor(x,y)
@@ -732,7 +755,7 @@ function update_bullet(b)
   local new_tile = hit_tile + 1
   if fget(new_tile, k_sprflg_breakable) == false then
    spawn_sprite_explosion(new_tile,flr(b.x),flr(b.y))
-   new_tile = background_tile
+   new_tile = k_tile_back
   end
   mset(b.x,b.y,new_tile)
   impact = true
@@ -844,49 +867,84 @@ function check_line_platform(x1,y1,x2,y2)
  return platform,x2,y2
 end
 
-function create_platform(x,y)
- p = create_actor(x,y)
- --p.update = move_platform
- p.spr = 25
- p.solid = true
+function calc_movement_range(x,y,xdir,size)
+ res = {}
+ local max_range =0
+ local start_pos = 0
+ if xdir == true then 
+  max_range = 127 
+  start_pos = x
+ else 
+  max_range = 34 
+  start_pos = y
+ end
+ local min_val = start_pos
+ local max_val = start_pos + size
  
- --vertical movement range
- --move this into a util function
- local miny = y
- local maxy = y
- while p.miny == nil or p.maxy == nil do
+ while res.min == nil or res.max == nil do
   
-  if p.miny == nil then
-   local tval = mget(x,miny)
-   if fget(tval,k_sprflg_solid) == true then 
-    p.miny = miny + 1
+  if res.min == nil then
+   local xp = x
+   local yp = y
+   if xdir == true then xp = min_val else yp = min_val end
+   local tval = mget(xp,yp)
+   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
+    res.min = min_val + 1
    end
-   miny -= 1
-   if (miny <= 0) p.miny = 0.5
+   min_val -= 1
+   if (min_val <= 0) res.min = 0.5
   end
   
-  if p.maxy == nil then
-   local tval = mget(x,maxy)
-   if fget(tval,k_sprflg_solid) == true then 
-    p.maxy = maxy - 1
+  if res.max == nil then
+   local xp = x
+   local yp = y
+   if xdir == true then xp = max_val else yp = max_val end
+   local tval = mget(xp,yp)
+   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
+    res.max = max_val - 1
    end
-   maxy += 1
-   if (maxy >= 34) p.maxy = 33
+   max_val += 1
+   if (max_val >= max_range) res.max_val = max_range - 1
   end
  end
- 
+ return res
+end
+
+function create_platform(x,y,spr)
+ p = create_actor(x,y)
+ p.spr = 25
+ p.solid = true
  p.speed = 0.06
- p.dy = p.speed
+ p.xdir = false
+ p.draw = draw_platform
+ if(spr == 65) p.xdir = true
+
+ -- calc movement range
+ local size = 1
+ local range = calc_movement_range(x,y,p.xdir,size)
+ if p.xdir == false then -- vertical
+  p.miny = res.min
+  p.maxy = res.max
+  p.dy = p.speed
+ else -- horizontal
+  p.minx = res.min
+  p.maxx = res.max
+  p.dx = p.speed
+ end
  
  add(platforms,p)
  return p
 end
--- register with factory
-actor_create[25] = create_platform
 
 function move_platform(p)
  p.x += p.dx
  p.y += p.dy
+ if p.minx!=nil and p.x <= p.minx then
+  p.dx = p.speed
+ end
+ if p.maxx!=nil and p.x >= p.maxx then
+  p.dx = -p.speed
+ end
  if p.miny!=nil and p.y <= p.miny then
   p.dy = p.speed
  end
@@ -894,6 +952,13 @@ function move_platform(p)
   p.dy = -p.speed
  end
  
+end
+
+function draw_platform(a)
+ local sx = ((a.x - map_off_x) * 8) - 4
+ local sy = ((a.y - map_off_y) * 8) - 4
+ spr(a.spr + a.frame, sx, sy)
+
 end
 
 -->8
@@ -1040,6 +1105,14 @@ aaaaaaaa066006606600006600999900cccccccc0000000061111111610111116101010155555555
 00000000228888882288888800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000022888800228888000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000002222000022220000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+77777777700000077000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00777000707007070700007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07070700770000770070070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00070000777777770007700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00070000770000770007700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07070700707007070070070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00777000700000070700007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+77777777700000077000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
 0002020200000000000404040404040000000008100022222202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -1074,7 +1147,7 @@ __map__
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-031100191900000000000000000000000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+031100004241000000000000000042000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
