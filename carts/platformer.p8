@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 15
+version 16
 __lua__
 
 
@@ -280,20 +280,12 @@ function actor_check_death(a)
  end
 end
 
--- move actor with collision & gravity
-function move_solid_actor(a)
-
- if a.platform != nil then
-  a.x += a.platform.dx
-  a.y += a.platform.dy
-  a.grounded = true
- end
- 
+function actor_apply_vel(a,dx,dy)
  -- apply x vel first
- if not solid_a(a, a.dx, 0) then
-  a.x += a.dx -- no collision, we're good to move
+ if not solid_a(a, dx, 0) then
+  a.x += dx -- no collision, we're good to move
  else   
-  local step = sgn(a.dx) * k_pixmap -- single pixel step
+  local step = sgn(dx) * k_pixmap -- single pixel step
   
   while not solid_a(a, step, 0) do
    a.x += step
@@ -306,17 +298,17 @@ function move_solid_actor(a)
  end
 
  -- then apply y velocity
- if a.alive==false or not solid_a(a, 0, a.dy) then
-  a.y += a.dy
+ if a.alive==false or not solid_a(a, 0, dy) then
+  a.y += dy
   a.grounded = false
  else
   -- landed?
-  if a.dy > 0 and a.grounded == false then
+  if dy > 0 and a.grounded == false then
    a.grounded = true
    sfx(2)
   end
   
-  local step = sgn(a.dy) * k_pixmap -- single pixel step
+  local step = sgn(dy) * k_pixmap -- single pixel step
   
   while not solid_a(a, 0, step) do
    a.y += step
@@ -324,7 +316,20 @@ function move_solid_actor(a)
   
   a.dy = 0
   a.jump_timer = 0
+ end 
+end
+
+-- move actor with collision & gravity
+function move_solid_actor(a)
+
+ if a.platform != nil then
+  --a.x += a.platform.dx
+  --a.y += a.platform.dy
+  actor_apply_vel(a,a.platform.dx,a.platform.dy)
+  a.grounded = true
  end
+ 
+ actor_apply_vel(a,a.dx,a.dy)
  
  -- check for water
  local player_tile = mget(a.x,a.y);
@@ -498,105 +503,7 @@ function restart_player()
  pl.alive = true
 end
 
--- rope code
-function fire_bullet_action(pl)
-   local b_vel = sgn(pl.dx) * 0.5
-   b = create_bullet(pl,pl.x,pl.y,b_vel,0)
-end
 
-function fire_rope_action(pl)
- if (pl.rope != nil) return -- already have a rope deployed
- if (pl.in_water == true) return -- rope doesn't work in the water
- local xdir = 0
- local ydir = -10
- if btn(2) == true then	-- diagonals
-  if(btn(1)) xdir += 10
-  if(btn(0)) xdir -=10
- end
- local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x + xdir,pl.y + ydir,k_sprflg_solid)
- if hit == true then
-  local r = {}
-  r.anchor = {}
-  r.anchor.x = rx
-  r.anchor.y = ry
-  local dx = rx - pl.x
-  local dy = ry - pl.y
-  r.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
-  pl.rope = r
- end
-end
-
-function update_rope(pl)
- if (pl.rope == nil) return 
- if btn(4) == false or pl.in_water == true then
-  pl.rope = nil
-  return
- end
- 
- -- update rope constraint
- local dx = pl.x - pl.rope.anchor.x
- local dy = pl.y - pl.rope.anchor.y
- local length = sqrt((dx * dx) + (dy * dy))
- local springconst = 1.0
- local frictionconstant = 0.2
- local force_x = -(dx / length) * (length - pl.rope.length) * springconst
- local force_y = -(dy / length) * (length - pl.rope.length) * springconst
- 
- --force_x += -pl.dx * frictionconstant;
- --force_y += -pl.dy * frictionconstant;
- pl.dx += force_x
- pl.dy += force_y
- 
- pl.dx *= 0.9
- pl.dy *= 0.9
- 
- -- change rope length with up/down
- if (btn(2)) pl.rope.length -= 0.1
- if (btn(3)) pl.rope.length += 0.1
- 
- -- check for rope snags
- local hit,rx,ry = map_line_check(pl.x,pl.y,pl.rope.anchor.x,pl.rope.anchor.y,k_sprflg_solid)
- if hit == true then
-  local r = {}
-  r.anchor = {}
-  r.anchor.link = pl.rope.anchor
-  r.anchor.x = rx
-  r.anchor.y = ry
-  local dx = rx - pl.x
-  local dy = ry - pl.y
-  r.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
-  pl.rope = r
- else 
-  -- check for free path to link if there is one
-  if pl.rope.anchor.link != nil then
-   local hit,rx,ry = map_line_check(pl.x,pl.y,pl.rope.anchor.link.x,pl.rope.anchor.link.y,k_sprflg_solid)
-   if hit == false then
-    pl.rope.anchor = pl.rope.anchor.link
-    local dx = pl.rope.anchor.x - pl.x
-    local dy = pl.rope.anchor.y - pl.y
-    pl.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
-   end 
-  end 
- end
-end
-
-function draw_rope(pl)
- if (pl.rope == nil) return 
- 
- local x1 = ((pl.x - map_off_x) * 8) 
- local y1 = ((pl.y - map_off_y) * 8) 
- 
- local anchor = pl.rope.anchor
- while anchor != nill do
-  local x2 = ((anchor.x - map_off_x) * 8) 
-  local y2 = ((anchor.y - map_off_y) * 8) 
-
-  line(x1,y1,x2,y2,7)
-  anchor = anchor.link
-  x1 = x2
-  y1 = y2
- end
-end
 
 function update_player(pl)
 
@@ -724,6 +631,106 @@ function draw_player(a)
  -- draw action 
  if a.action != nill and a.action.draw != nil then
   a.action.draw(a)
+ end
+end
+
+-- rope code
+function fire_bullet_action(pl)
+   local b_vel = sgn(pl.dx) * 0.5
+   b = create_bullet(pl,pl.x,pl.y,b_vel,0)
+end
+
+function fire_rope_action(pl)
+ if (pl.rope != nil) return -- already have a rope deployed
+ if (pl.in_water == true) return -- rope doesn't work in the water
+ local xdir = 0
+ local ydir = -10
+ if btn(2) == true then	-- diagonals
+  if(btn(1)) xdir += 10
+  if(btn(0)) xdir -=10
+ end
+ local hit,rx,ry = map_line_check(pl.x,pl.y,pl.x + xdir,pl.y + ydir,k_sprflg_solid)
+ if hit == true then
+  local r = {}
+  r.anchor = {}
+  r.anchor.x = rx
+  r.anchor.y = ry
+  local dx = rx - pl.x
+  local dy = ry - pl.y
+  r.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
+  pl.rope = r
+ end
+end
+
+function update_rope(pl)
+ if (pl.rope == nil) return 
+ if btn(4) == false or pl.in_water == true then
+  pl.rope = nil
+  return
+ end
+ 
+ -- update rope constraint
+ local dx = pl.x - pl.rope.anchor.x
+ local dy = pl.y - pl.rope.anchor.y
+ local length = sqrt((dx * dx) + (dy * dy))
+ local springconst = 1.0
+ local frictionconstant = 0.2
+ local force_x = -(dx / length) * (length - pl.rope.length) * springconst
+ local force_y = -(dy / length) * (length - pl.rope.length) * springconst
+ 
+ --force_x += -pl.dx * frictionconstant;
+ --force_y += -pl.dy * frictionconstant;
+ pl.dx += force_x
+ pl.dy += force_y
+ 
+ pl.dx *= 0.9
+ pl.dy *= 0.9
+ 
+ -- change rope length with up/down
+ if (btn(2)) pl.rope.length -= 0.1
+ if (btn(3)) pl.rope.length += 0.1
+ 
+ -- check for rope snags
+ local hit,rx,ry = map_line_check(pl.x,pl.y,pl.rope.anchor.x,pl.rope.anchor.y,k_sprflg_solid)
+ if hit == true then
+  local r = {}
+  r.anchor = {}
+  r.anchor.link = pl.rope.anchor
+  r.anchor.x = rx
+  r.anchor.y = ry
+  local dx = rx - pl.x
+  local dy = ry - pl.y
+  r.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
+  pl.rope = r
+ else 
+  -- check for free path to link if there is one
+  if pl.rope.anchor.link != nil then
+   local hit,rx,ry = map_line_check(pl.x,pl.y,pl.rope.anchor.link.x,pl.rope.anchor.link.y,k_sprflg_solid)
+   if hit == false then
+    pl.rope.anchor = pl.rope.anchor.link
+    local dx = pl.rope.anchor.x - pl.x
+    local dy = pl.rope.anchor.y - pl.y
+    pl.rope.length = sqrt((dx * dx) + (dy * dy)) -- store initial rop length
+   end 
+  end 
+ end
+end
+
+function draw_rope(pl)
+ if (pl.rope == nil) return 
+ 
+ local x1 = ((pl.x - map_off_x) * 8) 
+ local y1 = ((pl.y - map_off_y) * 8) 
+ 
+ local anchor = pl.rope.anchor
+ while anchor != nill do
+  local x2 = ((anchor.x - map_off_x) * 8) 
+  local y2 = ((anchor.y - map_off_y) * 8) 
+
+  line(x1,y1,x2,y2,7)
+  anchor = anchor.link
+  x1 = x2
+  y1 = y2
  end
 end
 
@@ -892,7 +899,7 @@ function calc_movement_range(x,y,xdir,size)
     res.min = min_val + 1
    end
    min_val -= 1
-   if (min_val <= 0) res.min = 0.5
+   if (min_val <= 0) res.min = 1 + 0.5
   end
   
   if res.max == nil then
@@ -955,9 +962,8 @@ function move_platform(p)
 end
 
 function draw_platform(a)
- local sx = ((a.x - map_off_x) * 8) - 4
- local sy = ((a.y - map_off_y) * 8) - 4
- spr(a.spr + a.frame, sx, sy)
+ local sx,sy = world_to_screen(a.x,a.y)
+ spr(a.spr + a.frame, sx-4, sy-4)
 
 end
 
@@ -994,8 +1000,7 @@ end
 
 function render_particles()
  for p in all(particles) do
-  local sx = ((p.x - map_off_x) * 8) 
-  local sy = ((p.y - map_off_y) * 8) 
+  local sx,sy = world_to_screen(p.x,p.y)
   pset(sx,sy,p.col)
  end
 end
@@ -1054,7 +1059,13 @@ function spawn_sprite_explosion(n,x,y)
 end
 
 -->8
+
 -- misc graphics routines
+function world_to_screen(x,y)
+ local sx = ((x - map_off_x) * 8) 
+ local sy = ((y - map_off_y) * 8) 
+ return sx,sy
+end
 
 -- draw scaled sprite
 -- n - sprite no
@@ -1147,7 +1158,7 @@ __map__
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-031100004241000000000000000042000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+031100000041000000000000000042000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
