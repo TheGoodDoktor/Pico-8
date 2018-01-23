@@ -870,7 +870,8 @@ function check_line_platform(x1,y1,x2,y2)
  return platform,x2,y2
 end
 
-function calc_movement_range(x,y,xdir,size)
+-- check_func is a function which returns if a position (x,y) is blocked
+function calc_movement_range(x,y,xdir,size,check_func)
  res = {}
  local max_range =0
  local start_pos = 0
@@ -890,10 +891,7 @@ function calc_movement_range(x,y,xdir,size)
    local xp = x
    local yp = y
    if xdir == true then xp = min_val else yp = min_val end
-   local tval = mget(xp,yp)
-   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
-    res.min = min_val + 1
-   end
+   if(check_func(xp,yp) == true) res.min = min_val + 1
    min_val -= 1
    if (min_val <= 0) res.min = 1 + 0.5
   end
@@ -902,16 +900,21 @@ function calc_movement_range(x,y,xdir,size)
    local xp = x
    local yp = y
    if xdir == true then xp = max_val else yp = max_val end
-   local tval = mget(xp,yp)
-   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
-    res.max = max_val - 1
-   end
+   if(check_func(xp,yp) == true) res.max = max_val - 1
    max_val += 1
    if (max_val >= max_range) res.max = max_range - 1
   end
  end
  return res
 end
+
+-- returns if position is blocked for platforms
+function platform_move_check(xp,yp)
+ local tval = mget(xp,yp)
+ if(fget(tval,k_sprflg_solid) == true or tval == k_tile_block) return true
+ return false
+end
+
 
 function create_platform(x,y,spr)
  p = create_actor(x,y)
@@ -925,7 +928,7 @@ function create_platform(x,y,spr)
 
  -- calc movement range
  local size = 1
- local range = calc_movement_range(x,y,p.xdir,size)
+ local range = calc_movement_range(x,y,p.xdir,size,platform_move_check)
  if p.xdir == false then -- vertical
   p.miny = res.min
   p.maxy = res.max
