@@ -33,6 +33,7 @@ function register_actors()
  actor_create[17] = create_player
  actor_create[64] = create_platform -- up/down
  actor_create[65] = create_platform -- left/right
+ actor_create[5] = create_enemy
 
 end
 
@@ -119,31 +120,7 @@ function _init()
   
  register_actors()
  setup_map()
- 
- -- make a bouncy ball
- --[[local ball = make_actor(8.5,7.5)
- ball.spr = 33
- ball.dx=0.05
- ball.dy=-0.1
- ball.vel_damp=0.5
- 
- local ball = make_actor(7,5)
- ball.spr = 49
- ball.dx=-0.1
- ball.dy=0.15
- ball.vel_damp=1
- ball.bounce = 0.8
- 
- 
- -- tiny guy
- 
- a = make_actor(7,5)
- a.spr=5
- a.frames=4
- a.dx=1/8
- a.vel_damp=0.8
- ]]
- 
+
  
 end
 
@@ -174,25 +151,6 @@ function check_pickup(x,y)
  end
  
 end
-
--- true if a we hit another
--- solid actor after moving dx,dy
---[[function solid_actor(a, dx, dy)
-
- for a2 in all(actors) do
-  if a2 != a then
-   local x=(a.x+dx) - a2.x
-   local y=(a.y+dy) - a2.y
-
-   -- overlapping?
-   if ((abs(x) < (a.w+a2.w)) and (abs(y) < (a.h+a2.h))) and (a2.solid == true) then 
-	return true
-   end
-  end
- end
-
- return false
-end]]
 
 -- check if we are overlapping another actor
 -- dx,dy are optional offsets that can be used for prediction
@@ -870,8 +828,9 @@ function check_line_platform(x1,y1,x2,y2)
  return platform,x2,y2
 end
 
-function calc_movement_range(x,y,xdir,size)
- res = {}
+-- check_func is a function which returns if a position (x,y) is blocked
+function calc_movement_range(x,y,xdir,size,check_func)
+ local res = {}
  local max_range =0
  local start_pos = 0
  if xdir == true then 
@@ -890,10 +849,7 @@ function calc_movement_range(x,y,xdir,size)
    local xp = x
    local yp = y
    if xdir == true then xp = min_val else yp = min_val end
-   local tval = mget(xp,yp)
-   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
-    res.min = min_val + 1
-   end
+   if(check_func(xp,yp) == true) res.min = min_val + 1
    min_val -= 1
    if (min_val <= 0) res.min = 1 + 0.5
   end
@@ -902,16 +858,21 @@ function calc_movement_range(x,y,xdir,size)
    local xp = x
    local yp = y
    if xdir == true then xp = max_val else yp = max_val end
-   local tval = mget(xp,yp)
-   if fget(tval,k_sprflg_solid) == true or tval == k_tile_block then 
-    res.max = max_val - 1
-   end
+   if(check_func(xp,yp) == true) res.max = max_val - 1
    max_val += 1
    if (max_val >= max_range) res.max = max_range - 1
   end
  end
  return res
 end
+
+-- returns if position is blocked for platforms
+function platform_move_check(xp,yp)
+ local tval = mget(xp,yp)
+ if(fget(tval,k_sprflg_solid) == true or tval == k_tile_block) return true
+ return false
+end
+
 
 function create_platform(x,y,spr)
  p = create_actor(x,y)
@@ -925,14 +886,14 @@ function create_platform(x,y,spr)
 
  -- calc movement range
  local size = 1
- local range = calc_movement_range(x,y,p.xdir,size)
+ local range = calc_movement_range(x,y,p.xdir,size,platform_move_check)
  if p.xdir == false then -- vertical
-  p.miny = res.min
-  p.maxy = res.max
+  p.miny = range.min
+  p.maxy = range.max
   p.dy = p.speed
  else -- horizontal
-  p.minx = res.min
-  p.maxx = res.max
+  p.minx = range.min
+  p.maxx = range.max
   p.dx = p.speed
  end
  
@@ -969,6 +930,72 @@ function draw_platform(a)
  local sx,sy = world_to_screen(a.x,a.y)
  spr(a.spr + a.frame, sx-4, sy-4)
 
+end
+
+-- enemy
+
+-- returns if position is blocked for platforms
+function enemy_move_check(xp,yp)
+ local tval = mget(xp,yp)
+ local tbelow = mget(xp,yp+1)
+ if(fget(tval,k_sprflg_solid) == true or fget(tbelow,k_sprflg_solid) == false) return true
+ return false
+end
+
+function create_enemy(x,y,spr)
+ a = create_actor(x,y)
+ a.update = enemy_update
+ a.draw = enemy_draw
+ a.spr = spr
+ a.speed = 0.5 * k_pixmap
+ a.xdir = true
+ a.deadly = true
+ 
+ -- calc movement range
+ local size = 1
+ local range = calc_movement_range(x,y,a.xdir,size,enemy_move_check)
+ if a.xdir == false then -- vertical
+  a.miny = range.min
+  a.maxy = range.max
+  a.dy = a.speed
+ else -- horizontal
+  a.minx = range.min
+  a.maxx = range.max
+  a.dx = a.speed
+ end
+ 
+ return p
+end
+
+function enemy_update(a)
+ a.x += a.dx
+ a.y += a.dy
+ 
+ if a.minx!=nil and a.x <= a.minx then
+  a.dx = a.speed
+ end
+ if a.maxx!=nil and a.x >= a.maxx then
+  a.dx = -a.speed
+ end
+ if a.miny!=nil and a.y <= a.miny then
+  a.dy = p.speed
+ end
+ if a.maxy!=nil and a.y >= a.maxy then
+  a.dy = -a.speed
+ end
+end
+
+function enemy_draw(a)
+ local sx = ((a.x - map_off_x) * 8) - 4
+ local sy = ((a.y - map_off_y) * 8) - 4
+ local flip_x = false	
+ local flip_y = false
+ 
+ if(a.alive == false) return -- don't render dead player
+ 
+ -- flip actor l/r based on vel
+ if (a.dx < 0) flip_x = true 
+ spr(a.spr + a.frame, sx, sy,1,1,flip_x,flip_y)
 end
 
 -->8
@@ -1147,7 +1174,7 @@ aaaaaaaa066006606600006600999900cccccccc0000000061111111610111116101010155555555
 00777000700000070700007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 77777777700000077000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
-0002020200000000000404040404040000000008100022222202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0002020200040404040404040404040000000008100022222202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 0202020202020202030302020203030302030303030202020202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -1178,7 +1205,7 @@ __map__
 0300000000000000000000000000000000000000000000000000000000000003030303030303000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000000000000000003030303030303030000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000000000000000000000000000000000000000300000000000003030303030303030000030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0300000000000000131313404000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0300000000000005131313000000000000000000001616160314141414141403030303030303031414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0300000000000003030303030000000000000000001616160314141414141414141414141414141414030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 031100004241000000000000000042000b0b0b00001616160314141414141414141414141414141403030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0303030303090909090909090909030303030303030303030303030303030303030303030303030303030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
