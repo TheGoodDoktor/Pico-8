@@ -24,7 +24,6 @@ map_off_x = 0
 map_off_y = 0
 global_tick = 0
 
-actors = {} --all actors in world
 actor_create={} -- actor creation table - is indexed by tile type
 
 -- register actor creation with factory
@@ -36,6 +35,8 @@ function register_actors()
  actor_create[5] = create_enemy
 
 end
+
+actors = {} --all actors in world
 
 -- make an actor
 -- and add to global collection
