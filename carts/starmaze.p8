@@ -57,32 +57,62 @@ function draw_actors()
 end
 
 -- test model definition
-test_model = {
-	x = {10,10,10,10},
-	y = {20,20,20,20},
+ship_model = {
+	x = {0,4,-4,3,-3},
+	y = {-8,8,8,4,4},
 	lines = {
 		{1,2},
-		{2,3},
-		{3,4}
+		{1,3},
+		{4,5}
 	}
 }
 
+function rotate_2d_point(x,y,angle)
+ local rx = x * cos(angle) - y * sin(angle)
+ local ry = y * cos(angle) + x * sin(angle)
+ return rx,ry
+end
+
 function draw_model(x,y,scale,angle,model)
- for line in all(model.lines) do
+ for l in all(model.lines) do
   local col = 7 -- white
-  local x1 = model.x[line[1]] * scale
-  local y1 = model.y[line[1]] * scale
-  local x2 = model.x[line[2]] * scale
-  local y2 = model.y[line[2]] * scale
-  -- todo: transform into screen space
-  line(x1,y1,x2,y2,col)
+  local x1 = model.x[l[1]] * scale
+  local y1 = model.y[l[1]] * scale
+  local x2 = model.x[l[2]] * scale
+  local y2 = model.y[l[2]] * scale
+  
+  -- rotate
+  x1,y1 = rotate_2d_point(x1,y1,angle)
+  x2,y2 = rotate_2d_point(x2,y2,angle)
+  
+  line(x1 + x,y1 + y,x2 + x,y2 + y,col)
  end
 end
 
 -->8
-function create_player(x,y)
- player = create_actor(x,y)
+function create_game_actor(x,y)
+ local actor = create_actor(x,y)
+ -- TODO: specific setup for our game actors
+ return actor
 end
+
+function create_player(x,y)
+ local pl = create_game_actor(x,y)
+ pl.update = update_player
+ pl.draw = draw_player
+ pl.scale = 0.5
+ pl.angle = 0
+ return pl
+end
+
+function update_player(pl)
+ pl.angle +=0.01
+end
+
+function draw_player(pl)
+ draw_model(pl.x,pl.y,pl.scale,pl.angle,ship_model)
+end
+
 -->8
 function _init()
  create_player(100,100)
@@ -93,6 +123,7 @@ function _update()
 end
 
 function _draw()
+ cls()
  draw_actors()
 end
 
